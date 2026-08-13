@@ -1,9 +1,8 @@
 """
 Author: Md Mahbub Alam
-File: Reusable vessel trajectory prediction models
+File: Vessel trajectory prediction models
 
 Available models: LSTM, GRU, CNN, ConvLSTM, and TCN.
-Transformer will be added after its reference implementation is available.
 """
 
 from functools import partial
