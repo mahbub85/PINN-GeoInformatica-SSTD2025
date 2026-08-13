@@ -1,6 +1,6 @@
 # Physics-Informed Vessel Trajectory Prediction via Finite Difference Kinematic Losses
 
-This repository implements physics-informed neural networks (PINNs) for vessel trajectory prediction. We augment sequence models with finite-difference kinematic loss terms that enforce kinematic consistency by penalizing discrepancies in estimated velocity and acceleration computed from predicted positions. The approach encourages smoother, physically-plausible vessel tracks, reduces unrealistic jumps, and improves long-horizon stability compared to purely data-driven baselines.
+This repository implements physics-informed neural networks (PINNs) for vessel trajectory prediction. We augment sequence models with finite-difference kinematic loss terms that enforce kinematic constraints by penalizing discrepancies in estimated velocity and acceleration computed from predicted positions. The approach encourages smoother, physically plausible vessel tracks, reduces unrealistic jumps, and improves long-horizon stability compared to purely data-driven baselines.
 
 Citation
 
