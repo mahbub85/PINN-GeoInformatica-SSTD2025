@@ -23,6 +23,7 @@ __all__ = [
 ]
 
 
+# First-order Euler loss with local small-angle motion.
 def physics_loss_euler_small_angle(
         y_true, y_pred, sog, cog, min_max, R=6371000.0, dt=120.0):
     """First-order Euler physics loss using a small-angle approximation."""
@@ -31,9 +32,11 @@ def physics_loss_euler_small_angle(
     sog_min, sog_max = min_max['sog']
     cog_min, cog_max = min_max['cog']
 
+    # Denormalize predicted positions.
     pred_lat = y_pred[..., 0] * (lat_max - lat_min) + lat_min
     pred_lon = y_pred[..., 1] * (lon_max - lon_min) + lon_min
 
+    # Denormalize motion inputs.
     sog_denorm = tf.squeeze(
         sog * (sog_max - sog_min) + sog_min, axis=-1
     )
@@ -41,6 +44,7 @@ def physics_loss_euler_small_angle(
         cog * (cog_max - cog_min) + cog_min, axis=-1
     )
 
+    # Predicted step changes.
     delta_lat_pred = pred_lat[:, 1:] - pred_lat[:, :-1]
     delta_lon_pred = pred_lon[:, 1:] - pred_lon[:, :-1]
 
@@ -58,6 +62,7 @@ def physics_loss_euler_small_angle(
     deg_per_radian = 180.0 / np.pi
     factor = (dt / R) * deg_per_radian
 
+    # Expected Euler changes.
     expected_delta_lat = sog_t * tf.cos(cog_t_rad) * factor
     expected_delta_lon = (
         sog_t * tf.sin(cog_t_rad) * factor / tf.cos(lat_t_rad)
@@ -66,6 +71,7 @@ def physics_loss_euler_small_angle(
     residual_lat = delta_lat_pred - expected_delta_lat
     residual_lon = delta_lon_pred - expected_delta_lon
 
+    # Normalize residuals by training ranges.
     residual_lat_norm = residual_lat / (lat_max - lat_min)
     residual_lon_norm = residual_lon / (lon_max - lon_min)
 
@@ -74,6 +80,7 @@ def physics_loss_euler_small_angle(
     )
 
 
+# First-order Euler loss with spherical motion.
 def physics_loss_euler_great_circle(
         y_true, y_pred, sog, cog, acceleration, cograte, min_max,
         R=6371000.0, dt=120.0):
@@ -85,9 +92,11 @@ def physics_loss_euler_great_circle(
     acc_min, acc_max = min_max['acceleration']
     cgr_min, cgr_max = min_max['cograte']
 
+    # Denormalize predicted positions.
     pred_lat = y_pred[..., 0] * (lat_max - lat_min) + lat_min
     pred_lon = y_pred[..., 1] * (lon_max - lon_min) + lon_min
 
+    # Denormalize motion inputs.
     sog_denorm = tf.squeeze(
         sog * (sog_max - sog_min) + sog_min, axis=-1
     )
@@ -101,6 +110,7 @@ def physics_loss_euler_great_circle(
         cograte * (cgr_max - cgr_min) + cgr_min, axis=-1
     )
 
+    # Predicted step changes.
     delta_lat_pred = pred_lat[:, 1:] - pred_lat[:, :-1]
     delta_lon_pred = pred_lon[:, 1:] - pred_lon[:, :-1]
 
@@ -130,6 +140,7 @@ def physics_loss_euler_great_circle(
         * dt_seconds / R_meters
     )
 
+    # Great-circle destination latitude.
     sin_lat_cos_d = tf.sin(lat_t_rad) * tf.cos(angular_distance)
     cos_lat_sin_d_cos_cog = (
         tf.cos(lat_t_rad)
@@ -141,6 +152,7 @@ def physics_loss_euler_great_circle(
     )
     next_lat_rad = tf.asin(next_lat_arg)
 
+    # Great-circle longitude change.
     lon_numerator = (
         tf.sin(cog_mid_rad)
         * tf.sin(angular_distance)
@@ -162,6 +174,7 @@ def physics_loss_euler_great_circle(
     residual_lat = delta_lat_pred - expected_delta_lat
     residual_lon = delta_lon_pred - expected_delta_lon
 
+    # Normalize residuals by training ranges.
     residual_lat_norm = residual_lat / (lat_max - lat_min)
     residual_lon_norm = residual_lon / (lon_max - lon_min)
 
@@ -170,6 +183,7 @@ def physics_loss_euler_great_circle(
     )
 
 
+# Small-angle motion rates for one Heun stage.
 def _small_angle_derivatives(
         lat, lon, sog, cog, acceleration, cograte, dt, R):
     """Calculate small-angle lat/lon rates."""
@@ -194,6 +208,7 @@ def _small_angle_derivatives(
     return dlat_dt, dlon_dt
 
 
+# Great-circle motion rates for one Heun stage.
 def _great_circle_derivatives(
         lat, lon, sog, cog, acceleration, cograte, dt, R):
     """Calculate great-circle lat/lon rates."""
@@ -211,6 +226,7 @@ def _great_circle_derivatives(
     expected_sog = sog + 0.5 * acceleration * dt
     angular_distance = expected_sog * dt / R
 
+    # Great-circle destination latitude.
     next_lat_arg = (
         tf.sin(lat_rad) * tf.cos(angular_distance)
         + tf.cos(lat_rad) * tf.sin(angular_distance) * tf.cos(cog_mid_rad)
@@ -219,6 +235,7 @@ def _great_circle_derivatives(
         tf.clip_by_value(next_lat_arg, -1.0, 1.0)
     )
 
+    # Great-circle longitude change.
     lon_numerator = (
         tf.sin(cog_mid_rad)
         * tf.sin(angular_distance)
@@ -236,6 +253,7 @@ def _great_circle_derivatives(
     return delta_lat / dt, delta_lon / dt
 
 
+# One Heun predictor-corrector update.
 def _heun_step(
         lat_t, lon_t, sog_t, cog_t, acceleration_t, cograte_t,
         dt, R, derivatives):
@@ -261,11 +279,13 @@ def _heun_step(
         acceleration_t, cograte_t, dt, R
     )
 
+    # Average both stages.
     delta_lat = 0.5 * (dlat_dt_t + dlat_dt_end) * dt
     delta_lon = 0.5 * (dlon_dt_t + dlon_dt_end) * dt
     return delta_lat, delta_lon
 
 
+# Shared Heun loss for either distance approximation.
 def _physics_loss_heun(
         y_pred, sog, cog, acceleration, cograte, min_max,
         derivatives, R, dt):
@@ -277,9 +297,11 @@ def _physics_loss_heun(
     acc_min, acc_max = min_max['acceleration']
     cgr_min, cgr_max = min_max['cograte']
 
+    # Denormalize predicted positions.
     pred_lat = y_pred[..., 0] * (lat_max - lat_min) + lat_min
     pred_lon = y_pred[..., 1] * (lon_max - lon_min) + lon_min
 
+    # Denormalize motion inputs.
     sog_denorm = tf.squeeze(
         sog * (sog_max - sog_min) + sog_min, axis=-1
     )
@@ -293,9 +315,11 @@ def _physics_loss_heun(
         cograte * (cgr_max - cgr_min) + cgr_min, axis=-1
     )
 
+    # Predicted step changes.
     delta_lat_pred = pred_lat[:, 1:] - pred_lat[:, :-1]
     delta_lon_pred = pred_lon[:, 1:] - pred_lon[:, :-1]
 
+    # Expected Heun changes.
     expected_delta_lat, expected_delta_lon = _heun_step(
         pred_lat[:, :-1],
         pred_lon[:, :-1],
@@ -309,6 +333,7 @@ def _physics_loss_heun(
     residual_lat = delta_lat_pred - expected_delta_lat
     residual_lon = delta_lon_pred - expected_delta_lon
 
+    # Normalize residuals by training ranges.
     residual_lat_norm = residual_lat / (lat_max - lat_min)
     residual_lon_norm = residual_lon / (lon_max - lon_min)
 
@@ -317,6 +342,7 @@ def _physics_loss_heun(
     )
 
 
+# Second-order Heun loss with local small-angle motion.
 def physics_loss_heun_small_angle(
         y_true, y_pred, sog, cog, acceleration, cograte, min_max,
         R=6371000.0, dt=120.0):
@@ -327,6 +353,7 @@ def physics_loss_heun_small_angle(
     )
 
 
+# Second-order Heun loss with spherical motion.
 def physics_loss_heun_great_circle(
         y_true, y_pred, sog, cog, acceleration, cograte, min_max,
         R=6371000.0, dt=120.0):
