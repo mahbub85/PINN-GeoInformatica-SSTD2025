@@ -1,6 +1,12 @@
 """
+AIS Data Preprocessing Utilities
+
 Author: Md Mahbub Alam
-File: AIS data preprocessing script
+
+Description:
+    Reusable functions for AIS dataset creation, noise filtering,
+    time-based trip segmentation, Cubic Hermite interpolation, and
+    kinematic feature engineering.
 """
 
 import numpy as np
